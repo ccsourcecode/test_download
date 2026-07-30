@@ -30,7 +30,7 @@ jobs:
       - name: Download Ubuntu 22.04 .deb packages
         run: |
           cd offline-ragflow-packages/ubuntu22-packages
-          for pkg in runc containerd docker.io libseccomp2 libsystemd0 python3-pip; do
+          for pkg in runc containerd docker.io libseccomp2 libsystemd0 python3-pip python3-wheel; do
             apt-get download $pkg
           done
 
@@ -83,10 +83,9 @@ jobs:
 
           echo "Installing Python packages..."
           if ! python3 -m pip --version >/dev/null 2>&1; then
-            echo "python3-pip not found. Installing bundled pip package..."
+            echo "python3-pip not found. Installing bundled pip dependencies..."
             cd "${SCRIPT_DIR}/ubuntu22-packages"
-            sudo dpkg -i ./python3-pip_*.deb || true
-            sudo apt-get install -f -y || true
+            sudo dpkg -i ./python3-wheel_*.deb ./python3-pip_*.deb || true
           fi
           if ! python3 -m pip --version >/dev/null 2>&1; then
             echo "pip is still unavailable. Trying ensurepip..."
