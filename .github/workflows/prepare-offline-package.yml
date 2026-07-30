@@ -1,11 +1,11 @@
 name: Prepare Offline Package for Ubuntu 22.04
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to manually trigger this workflow from the GitHub Actions tab
 
 jobs:
   build-offline-package:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04 # Uses an Ubuntu 22.04 runner to match your offline system
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -13,79 +13,31 @@ jobs:
       - name: Create package directory
         run: |
           mkdir -p offline-ragflow-packages/ubuntu22-packages
-          mkdir -p offline-ragflow-packages/python-packages
+          cd offline-ragflow-packages
 
       - name: Download gVisor
         run: |
           cd offline-ragflow-packages
-          # Download the GPG key
-          wget https://gvisor.dev/archive.key
-          
-          # Download runsc - using the correct URL structure
-          # Get the latest release version
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/google/gvisor/releases/latest | grep tag_name | cut -d '"' -f 4)
-          wget https://storage.googleapis.com/gvisor/releases/release/${LATEST_VERSION}/amd64/runsc
-          chmod +x runsc
+          ARCH=x86_64
+          URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
+          wget ${URL}/gvisor.tar.bz2 ${URL}/gvisor.tar.bz2.sha512
+          sha512sum -c gvisor.tar.bz2.sha512
+          mkdir -p gvisor
+          tar -xjf gvisor.tar.bz2 -C gvisor
+          chmod +x gvisor/runsc gvisor/containerd-shim-runsc-v1
 
       - name: Download Ubuntu 22.04 .deb packages
         run: |
           cd offline-ragflow-packages/ubuntu22-packages
-          # Download Docker and its dependencies for Ubuntu 22.04
-          apt-get update
-          apt-get download docker.io
-          apt-get download containerd
-          apt-get download runc
-          apt-get download libseccomp2
-          apt-get download libsystemd0
-          # Also download docker-compose-plugin if needed
-          apt-get download docker-compose-plugin
+          for pkg in runc containerd docker.io libseccomp2 libsystemd0; do
+            apt-get download $pkg
+          done
 
       - name: Create requirements file and download Python packages
         run: |
           cd offline-ragflow-packages
-          cat > requirements.txt <<EOF
-          fastapi
-          uvicorn
-          slowapi
-          pillow==12.0.0
-          opencv-python-headless==4.12.0.88
-          EOF
+          echo -e "fastapi\nuvicorn\nslowapi\npillow==12.0.0\nopencv-python-headless==4.12.0.88" > requirements.txt
           pip3 download -r requirements.txt -d ./python-packages
-
-      - name: Create installation script
-        run: |
-          cd offline-ragflow-packages
-          cat > install.sh <<'EOF'
-          #!/bin/bash
-          echo "Installing gVisor..."
-          sudo gpg --dearmor -o /usr/share/keyrings/gvisor.gpg < archive.key
-          sudo cp runsc /usr/local/bin/
-          sudo chmod +x /usr/local/bin/runsc
-          
-          echo "Installing Docker packages..."
-          cd ubuntu22-packages
-          sudo dpkg -i *.deb
-          sudo apt-get install -f -y
-          
-          echo "Configuring Docker..."
-          sudo tee /etc/docker/daemon.json <<EOL
-          {
-            "runtimes": {
-              "runsc": {
-                "path": "/usr/local/bin/runsc"
-              }
-            }
-          }
-          EOL
-          sudo systemctl restart docker
-          
-          echo "Installing Python packages..."
-          cd ../python-packages
-          pip3 install --no-index --find-links=. -r ../requirements.txt
-          
-          echo "Installation complete!"
-          EOF
-          chmod +x install.sh
 
       - name: Package all files into a zip
         run: |
