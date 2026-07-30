@@ -1,0 +1,46 @@
+name: Prepare Offline Package for Ubuntu 22.04
+
+on:
+  workflow_dispatch: # Allows you to manually trigger this workflow from the GitHub Actions tab
+
+jobs:
+  build-offline-package:
+    runs-on: ubuntu-22.04 # Uses an Ubuntu 22.04 runner to match your offline system
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create package directory
+        run: |
+          mkdir -p offline-ragflow-packages/ubuntu22-packages
+          cd offline-ragflow-packages
+
+      - name: Download gVisor
+        run: |
+          cd offline-ragflow-packages
+          wget https://gvisor.dev/archive.key
+          wget https://storage.googleapis.com/gvisor/releases/release/latest/amd64/runsc
+          chmod +x runsc
+
+      - name: Download Ubuntu 22.04 .deb packages
+        run: |
+          cd offline-ragflow-packages/ubuntu22-packages
+          for pkg in runc containerd docker.io libseccomp2 libsystemd0; do
+            apt-get download $pkg
+          done
+
+      - name: Create requirements file and download Python packages
+        run: |
+          cd offline-ragflow-packages
+          echo -e "fastapi\nuvicorn\nslowapi\npillow==12.0.0\nopencv-python-headless==4.12.0.88" > requirements.txt
+          pip3 download -r requirements.txt -d ./python-packages
+
+      - name: Package all files into a zip
+        run: |
+          zip -r ragflow-offline-packages.zip offline-ragflow-packages/
+
+      - name: Upload package as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragflow-offline-packages
+          path: ragflow-offline-packages.zip
