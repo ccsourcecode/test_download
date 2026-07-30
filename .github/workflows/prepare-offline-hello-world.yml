@@ -1,0 +1,64 @@
+name: Prepare Offline Hello World for Ubuntu 22.04
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-offline-hello-world:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create package directory
+        run: |
+          mkdir -p offline-hello-world-package
+
+      - name: Pull and export hello-world image
+        run: |
+          cd offline-hello-world-package
+          docker pull hello-world:latest
+          docker save -o hello-world.tar hello-world:latest
+          docker image inspect hello-world:latest > hello-world-image-inspect.json
+
+      - name: Create offline helper scripts
+        run: |
+          cd offline-hello-world-package
+          cat > load-hello-world.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+          echo "Loading hello-world image into Docker..."
+          docker load -i "${SCRIPT_DIR}/hello-world.tar"
+          echo "Image load complete."
+          EOF
+
+          cat > test-runsc-hello-world.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "Checking that runsc is registered with Docker..."
+          if ! docker info | grep -q ' runsc'; then
+            echo "runsc runtime is not registered in Docker."
+            echo "Install/configure gVisor first, then retry."
+            exit 1
+          fi
+
+          echo "Running hello-world with gVisor..."
+          docker run --rm --runtime=runsc hello-world:latest
+          echo "runsc hello-world test completed."
+          EOF
+
+          chmod +x load-hello-world.sh test-runsc-hello-world.sh
+
+      - name: Create package archive
+        run: |
+          tar -czf offline-hello-world-package.tar.gz offline-hello-world-package
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: offline-hello-world-package
+          path: offline-hello-world-package.tar.gz
