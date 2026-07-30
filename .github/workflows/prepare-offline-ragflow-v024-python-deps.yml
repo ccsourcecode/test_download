@@ -1,0 +1,82 @@
+name: Prepare Offline RAGFlow v0.24 Python Dependencies
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-offline-ragflow-v024-python-deps:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create package directory
+        run: |
+          mkdir -p offline-ragflow-v024-python-deps/python-packages
+
+      - name: Create requirements file
+        run: |
+          cd offline-ragflow-v024-python-deps
+          cat > requirements.txt <<'EOF'
+          fastapi
+          uvicorn
+          slowapi
+          pillow==12.0.0
+          opencv-python-headless==4.12.0.88
+          numpy
+          pandas
+          EOF
+
+      - name: Download Python packages
+        run: |
+          cd offline-ragflow-v024-python-deps
+          python3 -m pip download -r requirements.txt -d ./python-packages
+
+      - name: Create offline helper scripts
+        run: |
+          cd offline-ragflow-v024-python-deps
+          cat > install-python-deps.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            echo "python3 -m pip is not available on this machine."
+            echo "Install pip first, then rerun this script."
+            exit 1
+          fi
+
+          echo "Installing offline Python dependencies..."
+          python3 -m pip install --no-index --find-links="${SCRIPT_DIR}/python-packages" -r "${SCRIPT_DIR}/requirements.txt"
+          echo "Python dependency install complete."
+          EOF
+
+          cat > test-python-deps.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "Verifying required Python imports..."
+          python3 - <<'PY'
+          import fastapi
+          import uvicorn
+          import slowapi
+          import numpy
+          import pandas
+          import cv2
+          from PIL import Image
+          print("python dependency verification ok")
+          PY
+          EOF
+
+          chmod +x install-python-deps.sh test-python-deps.sh
+
+      - name: Create package archive
+        run: |
+          tar -czf offline-ragflow-v024-python-deps.tar.gz offline-ragflow-v024-python-deps
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: offline-ragflow-v024-python-deps
+          path: offline-ragflow-v024-python-deps.tar.gz
