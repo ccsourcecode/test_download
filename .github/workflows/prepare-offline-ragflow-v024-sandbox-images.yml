@@ -1,0 +1,72 @@
+name: Prepare Offline RAGFlow v0.24 Sandbox Images
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-offline-ragflow-v024-sandbox-images:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create package directory
+        run: |
+          mkdir -p offline-ragflow-v024-sandbox-images
+
+      - name: Pull and export RAGFlow v0.24 sandbox images
+        run: |
+          cd offline-ragflow-v024-sandbox-images
+          docker pull infiniflow/sandbox-base-python:latest
+          docker pull infiniflow/sandbox-executor-manager:latest
+          docker save -o ragflow-v024-sandbox-images.tar \
+            infiniflow/sandbox-base-python:latest \
+            infiniflow/sandbox-executor-manager:latest
+          docker image inspect infiniflow/sandbox-base-python:latest > sandbox-base-python-image-inspect.json
+          docker image inspect infiniflow/sandbox-executor-manager:latest > sandbox-executor-manager-image-inspect.json
+
+      - name: Create offline helper scripts
+        run: |
+          cd offline-ragflow-v024-sandbox-images
+          cat > load-ragflow-v024-sandbox-images.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+          echo "Loading RAGFlow v0.24 sandbox images into Docker..."
+          docker load -i "${SCRIPT_DIR}/ragflow-v024-sandbox-images.tar"
+          echo "Image load complete."
+          docker images | grep -E 'infiniflow/(sandbox-base-python|sandbox-executor-manager)'
+          EOF
+
+          cat > test-ragflow-v024-sandbox-images.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "Checking local sandbox images..."
+          docker image inspect infiniflow/sandbox-base-python:latest >/dev/null
+          docker image inspect infiniflow/sandbox-executor-manager:latest >/dev/null
+
+          echo "Checking that runsc is registered with Docker..."
+          if ! docker info | grep -q ' runsc'; then
+            echo "runsc runtime is not registered in Docker."
+            echo "Install/configure gVisor first, then retry."
+            exit 1
+          fi
+
+          echo "Sandbox images are loaded and runsc is available."
+          docker images | grep -E 'infiniflow/(sandbox-base-python|sandbox-executor-manager)'
+          EOF
+
+          chmod +x load-ragflow-v024-sandbox-images.sh test-ragflow-v024-sandbox-images.sh
+
+      - name: Create package archive
+        run: |
+          tar -czf offline-ragflow-v024-sandbox-images.tar.gz offline-ragflow-v024-sandbox-images
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: offline-ragflow-v024-sandbox-images
+          path: offline-ragflow-v024-sandbox-images.tar.gz
